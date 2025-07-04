@@ -24,7 +24,7 @@ def is_prime(n :int) -> bool:
         if i >= n:
             break
 
-        if pow(n, (i - 1), i) != 1:
+        if pow(i, (n - 1), n) != 1:
             is_prime = False
             break
 
@@ -60,10 +60,32 @@ class Gates(Enum):
     AND = 1
 
 
+
+def inverse(x: int, modulus: int) -> Optional[int]:
+        """ Returns the inverse of x modulo modulus, or None if it does not exist. """
+        if x == 0:
+            return None
+
+        try:
+            d = pow(x, -1, modulus)
+        except ValueError:
+            return None
+        
+        if (x * d) % modulus == 1:
+            return d
+        else:
+            return None
+
+
+    
 class Garbling:
     def __init__(self, size: int = 100):
         p = safe_prime(randint(2**(size - 1), 2**size))
-        q = safe_prime(randint(2**(size - 1), 2**size))
+        while True:
+            q = safe_prime(randint(2**(size - 1), 2**size))
+            if p != q:
+                break
+
         P = 2*p + 1
         Q = 2*q + 1
 
@@ -87,34 +109,36 @@ class Garbling:
         
         self.calculate_exponents()
 
-
+  
     def calculate_exponents(self):
         e = 3
-       
-
+        exponents = []
+        inverses = []
         while True:
-            exponents = []
-            inverses = []
-
             while len(exponents) < 5:
                 if not is_prime(e):
                     e += 2
                     continue
 
-                d = self.pq_pow(e, -1)
-                if (e*d) % self.pq != 1:
+                d = inverse(e, self.PHI)
+
+                if d is None:
                     print("?")
                     e += 2
+                    continue
                 else:
                     exponents.append(e)
                     inverses.append(d)
                     e += 2
 
         
-            h = (exponents[1]*exponents[4]*inverses[2] - exponents[3] + 4*self.PHI) % self.PHI
-            ih = self.pq_pow(h, -1)  
-            if (h * ih) % self.PHI == 1:
+            h = (exponents[1]*exponents[4]*inverses[2] - exponents[3]) % self.PHI
+            ih = inverse(h, self.pq)  
+            if ih is not None:
                 break
+
+            exponents = exponents[0:4]
+            inverses = inverses[0:4]
 
         self.exponents = exponents
         self.inverses = inverses
@@ -152,11 +176,13 @@ class Garbling:
             labels = self.labels[i] 
             
             if labels[0] == -1:
-                labels[0] = randint(0, self.modulus - 1)
-                labels[1] = randint(0, self.modulus - 1)
+                labels[0] = self.pow(randint(0, self.modulus - 1),4)
+                labels[1] = self.pow(randint(0, self.modulus - 1),4)
 
             if gate[0] == Gates.AND:
-                b0 = labels[1] * self.pow(labels[0], -1) % self.modulus
+                label0i = inverse(labels[0], self.modulus)
+
+                b0 = labels[1] * label0i % self.modulus
                 b0 = self.pow(b0, self.invh) % self.modulus
                 
                 a0 = labels[0] * self.pow(b0, -self.exponents[1]) % self.modulus
@@ -230,21 +256,84 @@ class Garbling:
     
 
 
-g = Garbling(10)
+def test():
+    g = Garbling(10)
 
-g.add_input(2)
-x = g.add_and(0, 1)
-#y = g.add_and(1, 0)
-g.calculate_labels()
+    g.add_input(4)
+    x = g.add_and(0, 1)
+    y = g.add_and(2, 3)
+    z1 = g.add_and(x, y)
+    z2 = g.add_and(x, y)
+    g.add_and(z1, z2)
 
-for i in range(4):
-    i = 2
-    inputs = [i // 2, i % 2 ]
-    g.evaluate(inputs)
-    valid = []
-    for j in range(len(g.gates)):
-        valid.append(g.wires[j] == g.labels[j][g.plain[j]])
+    g.calculate_labels()
 
-    print(g.wires, valid)
+    print(g.exponents)
+    correct = True
+
+    for i in range(4):
+        inputs = [i // 2, i % 2, i // 2, i % 2 ]
+        g.evaluate(inputs)
+        valid = []
+       
+        for j in range(len(g.gates)):
+            valid.append(g.wires[j] == g.labels[j][g.plain[j]])
+            if False in valid:
+                correct = False
+                print(f"Gate {j} failed: {g.wires[j]} != {g.labels[j][g.plain[j]]}")
+
+        print(valid)
+        
+    if correct:
+        print("All gates evaluated correctly.")
+    else:
+        print("Some gates failed to evaluate correctly.")
+
+
+def attack():
+    g = Garbling(20)
+    g.add_input(3)
+    x = g.add_and(0, 1)
+    y = g.add_and(1, 2)
+
+    g.calculate_labels()
+
+    g.evaluate([0,0,0])
+    
+    print(g.wires)
+    print(g.adaptors)
+    print(g.exponents)
+
+    b0 = g.wires[1]
+    x0 = g.wires[x]
+    b0p = b0 * g.adaptors[x][2] % g.modulus
+    c0 = g.wires[2]
+
+    y0 = g.wires[y]
+
+    b0_e1 = g.pow(b0p, g.exponents[1])
+    adaptor_minus_e2 = g.pow(g.adaptors[x][3], -g.exponents[2])
+    b1_e2 = b0_e1 * adaptor_minus_e2 % g.modulus
+
+    
+    c0_e3 = g.pow(c0, g.exponents[3])
+    b1_e = y0 * g.pow(c0_e3, -1) % g.modulus
+    
+    b1 = g.labels[1][1] 
+    b1p = b1 * g.adaptors[x][3] % g.modulus
+
+    print(b1_e, b1_e2)
+    print(g.pow(b1, g.exponents[0]), g.pow(b1, g.exponents[2]))    
+    print(g.exponents[0], g.exponents[2])
+
+    b1_recovered = b1_e2 * g.pow(b1_e, -2) % g.modulus
+    b1p_recovered = b1_recovered * g.adaptors[x][3] % g.modulus
+    print("b1_recovered:", b1_recovered, b1_recovered==b1)
+    print("b1p_recovered:", b1p_recovered, b1p_recovered==b1p)
+
+    x1 = g.pow(b0p, -g.exponents[3]) * g.pow(b1p_recovered, g.exponents[4]) * x0 % g.modulus  
+    print("x1:", x1, x1 == g.labels[x][1])
     
 
+
+attack()

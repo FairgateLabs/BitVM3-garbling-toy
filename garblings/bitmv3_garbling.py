@@ -1,84 +1,9 @@
 from enum import Enum
 from random import randint
-from typing import List, Optional
-
-
-def is_prime(n :int) -> bool:
-    is_prime = True
-        
-    i = 2
-    while True:
-        if n % i == 0:
-            is_prime = False
-            break
-        
-        if i == 2: 
-            i+=1
-        else:
-            i += 2
-
-        if i > 1000000 or i * i > n:
-            break
-
-    for i in [2,3,5,7,11,13]:
-        if i >= n:
-            break
-
-        if pow(i, (n - 1), n) != 1:
-            is_prime = False
-            break
-
-        i += 1
-
-    return is_prime
-
-def prime(starting: int) -> int:
-    """ Finding the next prime number using a probabilistic test. """
-
-    if starting % 2 == 0:
-        starting += 1
-
-    while True:
-        if is_prime(starting):
-            break
-
-        starting += 2    
-
-    return starting
-
-def safe_prime(starting: int) -> int:
-    while True:
-        starting = prime(starting)
-        if is_prime(starting * 2 + 1):
-            return starting
-
-        starting += 2
-
-
-class Gates(Enum):
-    INPUT = 0
-    AND = 1
-
-
-
-def inverse(x: int, modulus: int) -> Optional[int]:
-        """ Returns the inverse of x modulo modulus, or None if it does not exist. """
-        if x == 0:
-            return None
-
-        try:
-            d = pow(x, -1, modulus)
-        except ValueError:
-            return None
-        
-        if (x * d) % modulus == 1:
-            return d
-        else:
-            return None
-
-
+from typing import List, Optional, Tuple
+from garblings.utils import Gates, is_prime, safe_prime, inverse, extended_gcd
     
-class Garbling:
+class BitVM3Garbling:
     def __init__(self, size: int = 100):
         p = safe_prime(randint(2**(size - 1), 2**size))
         while True:
@@ -97,7 +22,6 @@ class Garbling:
         self.P = P
         self.Q = Q
 
-        self.phi = (p - 1) * (q - 1)
         self.PHI = (P - 1) * (Q - 1)
         self.pq = p * q
 
@@ -145,7 +69,8 @@ class Garbling:
         self.h = h
         self.invh = ih
 
-    def add_input(self, n = 1) -> List[int]:
+
+    def add_inputs(self, n = 1) -> List[int]:
         ret = []
 
         for i in range(n):
@@ -153,7 +78,6 @@ class Garbling:
             self.gates.append((Gates.INPUT,))
 
         return ret
-    
 
     def add_and(self, left: int, right: int) -> int:
         gate_index = len(self.gates)
@@ -219,15 +143,6 @@ class Garbling:
         
         return pow(base, exponent, self.modulus)
 
-    def pq_pow(self, base: int, exponent: int) -> int:
-        if exponent < 0:
-            exponent = self.phi  + exponent
-        elif exponent == 0:
-            return 1
-        
-        return pow(base, exponent, self.pq)
-
-
 
     def evaluate(self, inputs: List[int]): 
        index=0
@@ -252,16 +167,18 @@ class Garbling:
 
                 self.plain[i] = (plain_left * plain_right) 
                 self.wires[i] = (wire_left * wire_right) % self.modulus 
+            else: 
+                raise ValueError(f"Unknown gate type: {gate[0]}")
 
     
 
 
 def test():
-    g = Garbling(10)
+    g = BitVM3Garbling(10)
 
-    g.add_input(4)
-    x = g.add_and(0, 1)
-    y = g.add_and(2, 3)
+    a,b,c = g.add_inputs(3)
+    x = g.add_and(a, b)
+    y = g.add_and(b, c)
     z1 = g.add_and(x, y)
     z2 = g.add_and(x, y)
     g.add_and(z1, z2)
@@ -271,8 +188,9 @@ def test():
     print(g.exponents)
     correct = True
 
-    for i in range(4):
-        inputs = [i // 2, i % 2, i // 2, i % 2 ]
+    for i in range(8):
+        inputs = [ int(x) for x in bin(i)[2:].zfill(3) ]
+      
         g.evaluate(inputs)
         valid = []
        
@@ -291,23 +209,24 @@ def test():
 
 
 def attack():
-    g = Garbling(20)
-    g.add_input(3)
-    x = g.add_and(0, 1)
-    y = g.add_and(1, 2)
+    g = BitVM3Garbling(20)
+    a,b,c = g.add_inputs(3)
+    x = g.add_and(a, b)
+    y = g.add_and(b, c)
 
     g.calculate_labels()
-
     g.evaluate([0,0,0])
     
-    print(g.wires)
-    print(g.adaptors)
-    print(g.exponents)
+    print("gabled")
+    print("public exponents:", g.exponents)
+    print("adaptors:", g.adaptors)
+    print("wires:", g.wires)
 
-    b0 = g.wires[1]
+
+    b0 = g.wires[b]
     x0 = g.wires[x]
     b0p = b0 * g.adaptors[x][2] % g.modulus
-    c0 = g.wires[2]
+    c0 = g.wires[c]
 
     y0 = g.wires[y]
 
@@ -319,21 +238,24 @@ def attack():
     c0_e3 = g.pow(c0, g.exponents[3])
     b1_e = y0 * g.pow(c0_e3, -1) % g.modulus
     
-    b1 = g.labels[1][1] 
+    b1 = g.labels[b][1] 
     b1p = b1 * g.adaptors[x][3] % g.modulus
 
-    print(b1_e, b1_e2)
-    print(g.pow(b1, g.exponents[0]), g.pow(b1, g.exponents[2]))    
-    print(g.exponents[0], g.exponents[2])
+    gcd, k1, k2 = extended_gcd(g.exponents[0], g.exponents[2])
+    print("gcd(e1,e3):", gcd, "k1:", k1, "k2:", k2)
 
-    b1_recovered = b1_e2 * g.pow(b1_e, -2) % g.modulus
+    print(b1_e, b1_e2)
+    
+    b1_recovered = g.pow(b1_e, k1) *  g.pow(b1_e2, k2) % g.modulus
     b1p_recovered = b1_recovered * g.adaptors[x][3] % g.modulus
     print("b1_recovered:", b1_recovered, b1_recovered==b1)
     print("b1p_recovered:", b1p_recovered, b1p_recovered==b1p)
 
-    x1 = g.pow(b0p, -g.exponents[3]) * g.pow(b1p_recovered, g.exponents[4]) * x0 % g.modulus  
-    print("x1:", x1, x1 == g.labels[x][1])
+    x1_recovered = g.pow(b0p, -g.exponents[3]) * g.pow(b1p_recovered, g.exponents[4]) * x0 % g.modulus  
+    print("x1 recovered:", x1_recovered, x1_recovered == g.labels[x][1])
     
 
+    if b1p_recovered == b1p and x1_recovered == g.labels[x][1]:
+        print("recovered 1 input label and 1 output label")
 
-attack()
+    return b1_recovered == b1

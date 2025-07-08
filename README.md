@@ -19,7 +19,7 @@ Given the public data, circuit adaptors, and wire labels for the input `[0, 0, 0
 
 ## Detailed Explanation
 
-For a full explanation of the attack strategy, see the [detailed write-up](#). *(Replace `#` with a link if available.)*
+For a full explanation of the attack strategy, see the [detailed write-up](https://fairgate.io/files/bitvm3-sec.pdf)
 
 ## Running the Demo
 

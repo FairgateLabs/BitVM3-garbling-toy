@@ -4,13 +4,15 @@ This project provides toy implementations of two RSA-based garbling schemes, alo
 
 ## Garbling Schemes
 
-The code includes implementations of two garbling schemes based on:
+The code includes implementations of three garbling schemes based on the following two papers:
 
 - **BitVM3: Efficient Computation on Bitcoin**  
   Source: [bitvm.org/bitvm3.pdf](https://bitvm.org/bitvm3.pdf)
 
 - **Label Forward Propagation: Instantiating BitVM3**  
   Source: [goat.network/bitvm3-label-forward-propagation](https://www.goat.network/bitvm3-label-forward-propagation)
+
+And from a suggestion to use affine functions for adaptors proposed on the BitVM builders telegram group.
 
 ## Attack Overview
 
